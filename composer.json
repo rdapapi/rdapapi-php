@@ -1,0 +1,49 @@
+{
+    "name": "rdapapi/rdapapi-php",
+    "description": "Official PHP SDK for the RDAP API — look up domains, IPs, ASNs, nameservers, and entities via RDAP.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["rdap", "whois", "domain", "ip", "asn", "dns", "api", "nameserver", "entity"],
+    "authors": [
+        {
+            "name": "RDAP API",
+            "email": "support@rdapapi.io",
+            "homepage": "https://rdapapi.io"
+        }
+    ],
+    "homepage": "https://rdapapi.io",
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "pestphp/pest": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "RdapApi\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "RdapApi\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:coverage": "pest --coverage",
+        "lint": "pint --test",
+        "format": "pint",
+        "analyse": "phpstan analyse"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
