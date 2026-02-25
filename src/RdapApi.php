@@ -24,12 +24,12 @@ use RdapApi\Responses\NameserverResponse;
 
 final class RdapApi
 {
-    private const string DEFAULT_BASE_URL = 'https://rdapapi.io/api/v1';
+    private const DEFAULT_BASE_URL = 'https://rdapapi.io/api/v1';
 
-    private const int DEFAULT_TIMEOUT = 30;
+    private const DEFAULT_TIMEOUT = 30;
 
     /** @var array<int, class-string<RdapApiException>> */
-    private const array ERROR_MAP = [
+    private const ERROR_MAP = [
         400 => ValidationException::class,
         401 => AuthenticationException::class,
         403 => SubscriptionRequiredException::class,
