@@ -173,6 +173,37 @@ it('parses Entities with all roles', function () {
         ->and($entities->abuse->name)->toBe('Abuse');
 });
 
+it('parses dates into DateTimeImmutable', function () {
+    $dates = Dates::fromArray([
+        'registered' => '2020-01-01T00:00:00Z',
+        'expires' => '2028-09-14T04:00:00Z',
+        'updated' => '2024-02-20T10:16:08Z',
+    ]);
+
+    expect($dates->registeredAt())->toBeInstanceOf(\DateTimeImmutable::class)
+        ->and($dates->registeredAt()->format('Y'))->toBe('2020')
+        ->and($dates->expiresAt())->toBeInstanceOf(\DateTimeImmutable::class)
+        ->and($dates->updatedAt())->toBeInstanceOf(\DateTimeImmutable::class)
+        ->and($dates->expiresInDays())->toBeGreaterThan(0);
+});
+
+it('returns null for missing dates', function () {
+    $dates = Dates::fromArray([]);
+
+    expect($dates->registeredAt())->toBeNull()
+        ->and($dates->expiresAt())->toBeNull()
+        ->and($dates->updatedAt())->toBeNull()
+        ->and($dates->expiresInDays())->toBeNull();
+});
+
+it('returns null for invalid date strings', function () {
+    $dates = Dates::fromArray(['registered' => 'not-a-date', 'expires' => 'garbage']);
+
+    expect($dates->registeredAt())->toBeNull()
+        ->and($dates->expiresAt())->toBeNull()
+        ->and($dates->expiresInDays())->toBeNull();
+});
+
 it('handles empty arrays gracefully', function () {
     $ip = IpAddresses::fromArray([]);
     expect($ip->v4)->toBe([])

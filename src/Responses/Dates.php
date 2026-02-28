@@ -23,4 +23,46 @@ final readonly class Dates
             updated: $data['updated'] ?? null,
         );
     }
+
+    /** Parse the registered date into a DateTimeImmutable, or null. */
+    public function registeredAt(): ?\DateTimeImmutable
+    {
+        return self::parse($this->registered);
+    }
+
+    /** Parse the expiry date into a DateTimeImmutable, or null. */
+    public function expiresAt(): ?\DateTimeImmutable
+    {
+        return self::parse($this->expires);
+    }
+
+    /** Parse the updated date into a DateTimeImmutable, or null. */
+    public function updatedAt(): ?\DateTimeImmutable
+    {
+        return self::parse($this->updated);
+    }
+
+    /** Days until expiration, or null if no expiry date is available. */
+    public function expiresInDays(): ?int
+    {
+        $dt = $this->expiresAt();
+        if ($dt === null) {
+            return null;
+        }
+
+        return (int) (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->diff($dt)->format('%r%a');
+    }
+
+    private static function parse(?string $value): ?\DateTimeImmutable
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        try {
+            return new \DateTimeImmutable($value);
+        } catch (\Exception) {
+            return null;
+        }
+    }
 }
