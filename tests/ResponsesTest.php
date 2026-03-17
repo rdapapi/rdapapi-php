@@ -180,10 +180,10 @@ it('parses dates into DateTimeImmutable', function () {
         'updated' => '2024-02-20T10:16:08Z',
     ]);
 
-    expect($dates->registeredAt())->toBeInstanceOf(\DateTimeImmutable::class)
+    expect($dates->registeredAt())->toBeInstanceOf(DateTimeImmutable::class)
         ->and($dates->registeredAt()->format('Y'))->toBe('2020')
-        ->and($dates->expiresAt())->toBeInstanceOf(\DateTimeImmutable::class)
-        ->and($dates->updatedAt())->toBeInstanceOf(\DateTimeImmutable::class)
+        ->and($dates->expiresAt())->toBeInstanceOf(DateTimeImmutable::class)
+        ->and($dates->updatedAt())->toBeInstanceOf(DateTimeImmutable::class)
         ->and($dates->expiresInDays())->toBeGreaterThan(0);
 });
 

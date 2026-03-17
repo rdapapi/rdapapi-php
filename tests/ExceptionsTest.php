@@ -18,7 +18,7 @@ it('creates RdapApiException with correct properties', function () {
         ->and($e->statusCode)->toBe(500)
         ->and($e->errorCode)->toBe('server_error')
         ->and($e->getCode())->toBe(500)
-        ->and($e)->toBeInstanceOf(\Exception::class);
+        ->and($e)->toBeInstanceOf(Exception::class);
 });
 
 it('creates ValidationException extending RdapApiException', function () {
@@ -86,7 +86,7 @@ it('creates UpstreamException extending RdapApiException', function () {
 });
 
 it('preserves previous exception', function () {
-    $previous = new \RuntimeException('original');
+    $previous = new RuntimeException('original');
     $e = new RdapApiException('wrapped', 500, 'server_error', $previous);
 
     expect($e->getPrevious())->toBe($previous);

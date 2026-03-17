@@ -44,7 +44,7 @@ function mockClient(array $responses, array &$history = []): RdapApi
 
 it('throws if API key is empty', function () {
     new RdapApi('');
-})->throws(\InvalidArgumentException::class, 'API key must be a non-empty string.');
+})->throws(InvalidArgumentException::class, 'API key must be a non-empty string.');
 
 it('sends correct authorization header', function () {
     $history = [];
