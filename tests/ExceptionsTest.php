@@ -63,6 +63,20 @@ it('creates RateLimitException with null retryAfter', function () {
     expect($e->retryAfter)->toBeNull();
 });
 
+it('creates TemporarilyUnavailableException with retryAfter', function () {
+    $e = new \RdapApi\Exceptions\TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable', 300);
+
+    expect($e)->toBeInstanceOf(RdapApiException::class)
+        ->and($e->statusCode)->toBe(503)
+        ->and($e->retryAfter)->toBe(300);
+});
+
+it('creates TemporarilyUnavailableException with null retryAfter', function () {
+    $e = new \RdapApi\Exceptions\TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable');
+
+    expect($e->retryAfter)->toBeNull();
+});
+
 it('creates UpstreamException extending RdapApiException', function () {
     $e = new UpstreamException('Upstream fail', 502, 'upstream_error');
 

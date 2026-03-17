@@ -13,6 +13,7 @@ use RdapApi\Exceptions\NotFoundException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
+use RdapApi\Exceptions\TemporarilyUnavailableException;
 use RdapApi\Exceptions\UpstreamException;
 use RdapApi\Exceptions\ValidationException;
 use RdapApi\Responses\AsnResponse;
@@ -36,6 +37,7 @@ final class RdapApi
         404 => NotFoundException::class,
         429 => RateLimitException::class,
         502 => UpstreamException::class,
+        503 => TemporarilyUnavailableException::class,
     ];
 
     private Client $client;
@@ -221,7 +223,7 @@ final class RdapApi
         $message = $body['message'] ?? "HTTP {$statusCode}";
 
         $retryAfter = null;
-        if ($statusCode === 429) {
+        if ($statusCode === 429 || $statusCode === 503) {
             $retryHeader = $response->getHeaderLine('Retry-After');
             if ($retryHeader !== '') {
                 $retryAfter = (int) $retryHeader;
@@ -232,6 +234,10 @@ final class RdapApi
 
         if ($exceptionClass === RateLimitException::class) {
             throw new RateLimitException($message, $statusCode, $error, $retryAfter);
+        }
+
+        if ($exceptionClass === TemporarilyUnavailableException::class) {
+            throw new TemporarilyUnavailableException($message, $statusCode, $error, $retryAfter);
         }
 
         throw new $exceptionClass($message, $statusCode, $error);

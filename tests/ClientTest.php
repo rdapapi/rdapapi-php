@@ -355,6 +355,40 @@ it('throws RateLimitException with null retryAfter when header missing', functio
     }
 });
 
+it('throws TemporarilyUnavailableException on 503 with retryAfter', function () {
+    $client = mockClient([
+        new Response(503, ['Retry-After' => '300'], json_encode([
+            'error' => 'temporarily_unavailable',
+            'message' => 'Data for this domain is temporarily unavailable.',
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected TemporarilyUnavailableException');
+    } catch (\RdapApi\Exceptions\TemporarilyUnavailableException $e) {
+        expect($e->statusCode)->toBe(503)
+            ->and($e->errorCode)->toBe('temporarily_unavailable')
+            ->and($e->retryAfter)->toBe(300);
+    }
+});
+
+it('throws TemporarilyUnavailableException with null retryAfter when header missing', function () {
+    $client = mockClient([
+        new Response(503, [], json_encode([
+            'error' => 'temporarily_unavailable',
+            'message' => 'Data for this domain is temporarily unavailable.',
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected TemporarilyUnavailableException');
+    } catch (\RdapApi\Exceptions\TemporarilyUnavailableException $e) {
+        expect($e->retryAfter)->toBeNull();
+    }
+});
+
 it('throws UpstreamException on 502', function () {
     $client = mockClient([
         new Response(502, [], json_encode(['error' => 'upstream_error', 'message' => 'Upstream RDAP server failed'])),
