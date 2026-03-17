@@ -155,8 +155,9 @@ try {
 | `NotFoundException` | 404 | No RDAP data found |
 | `RateLimitException` | 429 | Rate limit or quota exceeded |
 | `UpstreamException` | 502 | Upstream RDAP server failure |
+| `TemporarilyUnavailableException` | 503 | Domain data temporarily unavailable |
 
-All exceptions expose `statusCode`, `errorCode`, and `getMessage()`. `RateLimitException` also has `retryAfter` (int or null).
+All exceptions expose `statusCode`, `errorCode`, and `getMessage()`. `RateLimitException` and `TemporarilyUnavailableException` also have `retryAfter` (int or null).
 
 ## Nullable Fields
 
@@ -169,6 +170,14 @@ if ($domain->dates->expires !== null) {
 
 // Or use PHP 8's nullsafe operator
 echo $domain->entities->registrant?->name;
+```
+
+## Development
+
+Set up pre-commit hooks (runs lint + tests before each commit):
+
+```bash
+git config core.hooksPath .githooks
 ```
 
 ## License

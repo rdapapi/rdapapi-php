@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+echo "Running lint..."
+./vendor/bin/pint --test
+
+echo "Running static analysis..."
+./vendor/bin/phpstan analyse
+
+echo "Running tests..."
+./vendor/bin/pest --coverage --min=100
+
+echo "All checks passed."
