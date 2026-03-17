@@ -11,6 +11,7 @@ use RdapApi\Exceptions\NotFoundException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
+use RdapApi\Exceptions\TemporarilyUnavailableException;
 use RdapApi\Exceptions\UpstreamException;
 use RdapApi\Exceptions\ValidationException;
 use RdapApi\RdapApi;
@@ -366,7 +367,7 @@ it('throws TemporarilyUnavailableException on 503 with retryAfter', function () 
     try {
         $client->domain('test.com');
         test()->fail('Expected TemporarilyUnavailableException');
-    } catch (\RdapApi\Exceptions\TemporarilyUnavailableException $e) {
+    } catch (TemporarilyUnavailableException $e) {
         expect($e->statusCode)->toBe(503)
             ->and($e->errorCode)->toBe('temporarily_unavailable')
             ->and($e->retryAfter)->toBe(300);
@@ -384,7 +385,7 @@ it('throws TemporarilyUnavailableException with null retryAfter when header miss
     try {
         $client->domain('test.com');
         test()->fail('Expected TemporarilyUnavailableException');
-    } catch (\RdapApi\Exceptions\TemporarilyUnavailableException $e) {
+    } catch (TemporarilyUnavailableException $e) {
         expect($e->retryAfter)->toBeNull();
     }
 });

@@ -7,6 +7,7 @@ use RdapApi\Exceptions\NotFoundException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
+use RdapApi\Exceptions\TemporarilyUnavailableException;
 use RdapApi\Exceptions\UpstreamException;
 use RdapApi\Exceptions\ValidationException;
 
@@ -64,7 +65,7 @@ it('creates RateLimitException with null retryAfter', function () {
 });
 
 it('creates TemporarilyUnavailableException with retryAfter', function () {
-    $e = new \RdapApi\Exceptions\TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable', 300);
+    $e = new TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable', 300);
 
     expect($e)->toBeInstanceOf(RdapApiException::class)
         ->and($e->statusCode)->toBe(503)
@@ -72,7 +73,7 @@ it('creates TemporarilyUnavailableException with retryAfter', function () {
 });
 
 it('creates TemporarilyUnavailableException with null retryAfter', function () {
-    $e = new \RdapApi\Exceptions\TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable');
+    $e = new TemporarilyUnavailableException('Unavailable', 503, 'temporarily_unavailable');
 
     expect($e->retryAfter)->toBeNull();
 });
