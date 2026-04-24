@@ -8,6 +8,7 @@ use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Response;
 use RdapApi\Exceptions\AuthenticationException;
 use RdapApi\Exceptions\NotFoundException;
+use RdapApi\Exceptions\NotSupportedException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
@@ -21,6 +22,8 @@ use RdapApi\Responses\DomainResponse;
 use RdapApi\Responses\EntityResponse;
 use RdapApi\Responses\IpResponse;
 use RdapApi\Responses\NameserverResponse;
+use RdapApi\Responses\TldListResponse;
+use RdapApi\Responses\TldResponse;
 use RdapApi\Tests\Fixtures;
 use RdapApi\Version;
 
@@ -319,8 +322,44 @@ it('throws NotFoundException on 404', function () {
         new Response(404, [], json_encode(['error' => 'not_found', 'message' => 'No RDAP data found'])),
     ]);
 
-    $client->domain('nope.example');
-})->throws(NotFoundException::class, 'No RDAP data found');
+    try {
+        $client->domain('nope.example');
+        test()->fail('Expected NotFoundException');
+    } catch (NotFoundException $e) {
+        expect($e)->not->toBeInstanceOf(NotSupportedException::class);
+        expect($e->errorCode)->toBe('not_found');
+    }
+});
+
+it('throws NotSupportedException when 404 error code is not_supported', function () {
+    $client = mockClient([
+        new Response(404, [], json_encode([
+            'error' => 'not_supported',
+            'message' => "The TLD '.nope' is not supported.",
+        ])),
+    ]);
+
+    try {
+        $client->domain('example.nope');
+        test()->fail('Expected NotSupportedException');
+    } catch (NotSupportedException $e) {
+        // Backwards compatible: NotSupportedException extends NotFoundException.
+        expect($e)->toBeInstanceOf(NotFoundException::class)
+            ->and($e->errorCode)->toBe('not_supported')
+            ->and($e->statusCode)->toBe(404);
+    }
+});
+
+it('routes not_supported errors for IP lookups too', function () {
+    $client = mockClient([
+        new Response(404, [], json_encode([
+            'error' => 'not_supported',
+            'message' => 'No RIR covers this IP range.',
+        ])),
+    ]);
+
+    $client->ip('203.0.113.1');
+})->throws(NotSupportedException::class);
 
 it('throws RateLimitException on 429 with retryAfter', function () {
     $client = mockClient([
@@ -434,6 +473,105 @@ it('throws error on POST endpoint', function () {
 
     $client->bulkDomains(['test.com']);
 })->throws(AuthenticationException::class);
+
+// === TLDs ===
+
+it('lists TLDs with meta and etag', function () {
+    $client = mockClient([
+        new Response(200, ['ETag' => '"abc"'], json_encode(Fixtures::tldsResponse())),
+    ]);
+
+    $result = $client->tlds();
+
+    expect($result)->toBeInstanceOf(TldListResponse::class)
+        ->and($result->meta->count)->toBe(2)
+        ->and($result->meta->coverage)->toBe(0.5)
+        ->and($result->meta->thresholds->always)->toBe(0.99)
+        ->and($result->data[0]->tld)->toBe('com')
+        ->and($result->data[0]->field_availability?->registered_at)->toBe('always')
+        ->and($result->data[1]->field_availability)->toBeNull()
+        ->and($result->etag)->toBe('"abc"');
+});
+
+it('forwards since and server query params on tlds()', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::tldsResponse())),
+    ], $history);
+
+    $client->tlds(['since' => '2026-04-01T00:00:00Z', 'server' => 'rdap.verisign.com']);
+
+    $uri = (string) $history[0]['request']->getUri();
+    expect($uri)->toContain('since=')
+        ->and($uri)->toContain('server=rdap.verisign.com');
+});
+
+it('returns null on 304 from tlds()', function () {
+    $client = mockClient([
+        new Response(304, [], ''),
+    ]);
+
+    expect($client->tlds(['if_none_match' => '"abc"']))->toBeNull();
+});
+
+it('sends If-None-Match header on tlds() when requested', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(304, [], ''),
+    ], $history);
+
+    $client->tlds(['if_none_match' => '"etag-value"']);
+
+    expect($history[0]['request']->getHeaderLine('If-None-Match'))->toBe('"etag-value"');
+});
+
+it('returns null etag on tlds() when header missing', function () {
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::tldsResponse())),
+    ]);
+
+    expect($client->tlds()?->etag)->toBeNull();
+});
+
+it('still raises typed errors on tlds()', function () {
+    $client = mockClient([
+        new Response(401, [], json_encode(['error' => 'unauthenticated', 'message' => 'Invalid API token.'])),
+    ]);
+
+    $client->tlds();
+})->throws(AuthenticationException::class);
+
+it('returns a single TLD with etag', function () {
+    $client = mockClient([
+        new Response(200, ['ETag' => '"com-1"'], json_encode(Fixtures::tldResponse())),
+    ]);
+
+    $result = $client->tld('com');
+
+    expect($result)->toBeInstanceOf(TldResponse::class)
+        ->and($result->data->tld)->toBe('com')
+        ->and($result->meta->thresholds->usually)->toBe(0.8)
+        ->and($result->etag)->toBe('"com-1"');
+});
+
+it('returns null on 304 from tld()', function () {
+    $client = mockClient([
+        new Response(304, [], ''),
+    ]);
+
+    expect($client->tld('com', ['if_none_match' => '"com-1"']))->toBeNull();
+});
+
+it('throws NotFoundException when tld() target does not exist', function () {
+    $client = mockClient([
+        new Response(404, [], json_encode([
+            'error' => 'not_found',
+            'message' => "No RDAP server is registered for the TLD 'nope'.",
+        ])),
+    ]);
+
+    $client->tld('nope');
+})->throws(NotFoundException::class);
 
 // === Version ===
 

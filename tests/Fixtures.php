@@ -243,4 +243,67 @@ final class Fixtures
             ],
         ];
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function tldsResponse(): array
+    {
+        return [
+            'data' => [
+                [
+                    'tld' => 'com',
+                    'supported_since' => '2026-03-07T00:00:00Z',
+                    'rdap_server_host' => 'rdap.verisign.com',
+                    'rdap_server_url' => 'https://rdap.verisign.com/com/v1/',
+                    'field_availability' => [
+                        'registrar' => 'sometimes',
+                        'registered_at' => 'always',
+                        'expires_at' => 'always',
+                        'nameservers' => 'always',
+                        'status' => 'always',
+                    ],
+                ],
+                [
+                    'tld' => 'fr',
+                    'supported_since' => '2026-03-07T00:00:00Z',
+                    'rdap_server_host' => 'rdap.nic.fr',
+                    'rdap_server_url' => 'https://rdap.nic.fr/',
+                    'field_availability' => null,
+                ],
+            ],
+            'meta' => [
+                'computed_at' => '2026-04-22T10:00:00Z',
+                'count' => 2,
+                'coverage' => 0.5,
+                'thresholds' => ['always' => 0.99, 'usually' => 0.8, 'sometimes' => 0.0],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function tldResponse(): array
+    {
+        return [
+            'data' => [
+                'tld' => 'com',
+                'supported_since' => '2026-03-07T00:00:00Z',
+                'rdap_server_host' => 'rdap.verisign.com',
+                'rdap_server_url' => 'https://rdap.verisign.com/com/v1/',
+                'field_availability' => [
+                    'registrar' => 'sometimes',
+                    'registered_at' => 'always',
+                    'expires_at' => 'always',
+                    'nameservers' => 'always',
+                    'status' => 'always',
+                ],
+            ],
+            'meta' => [
+                'computed_at' => '2026-04-22T10:00:00Z',
+                'thresholds' => ['always' => 0.99, 'usually' => 0.8, 'sometimes' => 0.0],
+            ],
+        ];
+    }
 }

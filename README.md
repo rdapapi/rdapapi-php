@@ -124,6 +124,48 @@ foreach ($resp->results as $result) {
 }
 ```
 
+## Supported TLDs Catalog
+
+List every TLD the API can resolve, with the date support was added and a qualitative summary of which fields the registry's RDAP server populates. Does not count against your monthly quota.
+
+```php
+$tlds = $api->tlds();
+if ($tlds !== null) {
+    echo "{$tlds->meta->count} TLDs, coverage ".round($tlds->meta->coverage * 100)."%\n";
+
+    foreach ($tlds->data as $tld) {
+        $availability = $tld->field_availability;
+        if ($availability !== null) {
+            echo "{$tld->tld}: expires_at={$availability->expires_at}\n";
+        }
+    }
+}
+```
+
+Filter to recent additions or to a single registry:
+
+```php
+$recent = $api->tlds(['since' => '2026-04-01T00:00:00Z']);
+$verisign = $api->tlds(['server' => 'rdap.verisign.com']);
+```
+
+Pass back the previous `etag` to skip the transfer when nothing has changed:
+
+```php
+$first = $api->tlds();
+$later = $api->tlds(['if_none_match' => $first?->etag ?? '']);
+if ($later === null) {
+    echo "No change since last poll\n";
+}
+```
+
+Look up a single TLD:
+
+```php
+$com = $api->tld('com');
+echo $com->data->rdap_server_host; // "rdap.verisign.com"
+```
+
 ## Error Handling
 
 All API errors are thrown as typed exceptions that extend `RdapApiException`:
@@ -131,28 +173,35 @@ All API errors are thrown as typed exceptions that extend `RdapApiException`:
 ```php
 use RdapApi\Exceptions\AuthenticationException;
 use RdapApi\Exceptions\NotFoundException;
+use RdapApi\Exceptions\NotSupportedException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
 
 try {
-    $domain = $api->domain('example.com');
+    $domain = $api->domain('example.nope');
+} catch (NotSupportedException $e) {
+    // Catch before NotFoundException: it's a subclass.
+    echo 'The TLD is not covered by RDAP.';
 } catch (NotFoundException $e) {
-    echo "Not found: {$e->getMessage()}";
+    echo 'The domain is not registered.';
 } catch (RateLimitException $e) {
     echo "Rate limited, retry after {$e->retryAfter} seconds";
 } catch (AuthenticationException $e) {
-    echo "Invalid API key";
+    echo 'Invalid API key';
 } catch (SubscriptionRequiredException $e) {
-    echo "Subscription required";
+    echo 'Subscription required';
 }
 ```
+
+`NotSupportedException` extends `NotFoundException`, so catching `NotFoundException` still handles both cases.
 
 | Exception | HTTP Status | Description |
 |---|---|---|
 | `ValidationException` | 400 | Invalid input |
 | `AuthenticationException` | 401 | Invalid or missing API key |
 | `SubscriptionRequiredException` | 403 | No active subscription |
-| `NotFoundException` | 404 | No RDAP data found |
+| `NotFoundException` | 404 | Namespace is covered but no record exists |
+| `NotSupportedException` | 404 | Namespace (TLD, IP range, ASN range) is not covered by RDAP |
 | `RateLimitException` | 429 | Rate limit or quota exceeded |
 | `UpstreamException` | 502 | Upstream RDAP server failure |
 | `TemporarilyUnavailableException` | 503 | Domain data temporarily unavailable |

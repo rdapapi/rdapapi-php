@@ -9,12 +9,16 @@ use RdapApi\Responses\Dates;
 use RdapApi\Responses\DomainResponse;
 use RdapApi\Responses\Entities;
 use RdapApi\Responses\EntityResponse;
+use RdapApi\Responses\FieldAvailability;
 use RdapApi\Responses\IpAddresses;
 use RdapApi\Responses\IpResponse;
 use RdapApi\Responses\Meta;
 use RdapApi\Responses\NameserverResponse;
 use RdapApi\Responses\Registrar;
 use RdapApi\Responses\Remark;
+use RdapApi\Responses\TldEntry;
+use RdapApi\Responses\TldListResponse;
+use RdapApi\Responses\TldResponse;
 use RdapApi\Tests\Fixtures;
 
 it('parses DomainResponse from array', function () {
@@ -217,4 +221,45 @@ it('handles empty arrays gracefully', function () {
     $registrar = Registrar::fromArray([]);
     expect($registrar->name)->toBeNull()
         ->and($registrar->iana_id)->toBeNull();
+});
+
+it('parses TldListResponse with entries and meta', function () {
+    $resp = TldListResponse::fromArray(Fixtures::tldsResponse(), '"abc"');
+
+    expect($resp->meta->count)->toBe(2)
+        ->and($resp->meta->coverage)->toBe(0.5)
+        ->and($resp->meta->thresholds->always)->toBe(0.99)
+        ->and($resp->meta->thresholds->usually)->toBe(0.8)
+        ->and($resp->meta->thresholds->sometimes)->toBe(0.0)
+        ->and($resp->data[0])->toBeInstanceOf(TldEntry::class)
+        ->and($resp->data[0]->tld)->toBe('com')
+        ->and($resp->data[0]->rdap_server_host)->toBe('rdap.verisign.com')
+        ->and($resp->data[0]->field_availability)->toBeInstanceOf(FieldAvailability::class)
+        ->and($resp->data[0]->field_availability->registrar)->toBe('sometimes')
+        ->and($resp->data[1]->field_availability)->toBeNull()
+        ->and($resp->etag)->toBe('"abc"');
+});
+
+it('parses TldResponse from a single-TLD payload', function () {
+    $resp = TldResponse::fromArray(Fixtures::tldResponse(), '"com-1"');
+
+    expect($resp->data->tld)->toBe('com')
+        ->and($resp->data->rdap_server_url)->toBe('https://rdap.verisign.com/com/v1/')
+        ->and($resp->meta->computed_at)->toBe('2026-04-22T10:00:00Z')
+        ->and($resp->meta->thresholds->always)->toBe(0.99)
+        ->and($resp->etag)->toBe('"com-1"');
+});
+
+it('handles missing tlds payload fields gracefully', function () {
+    $list = TldListResponse::fromArray([]);
+    expect($list->data)->toBe([])
+        ->and($list->meta->count)->toBe(0)
+        ->and($list->meta->coverage)->toBe(0.0)
+        ->and($list->etag)->toBeNull();
+
+    $single = TldResponse::fromArray([]);
+    expect($single->data->tld)->toBe('')
+        ->and($single->data->field_availability)->toBeNull()
+        ->and($single->meta->computed_at)->toBe('')
+        ->and($single->etag)->toBeNull();
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use RdapApi\Exceptions\AuthenticationException;
 use RdapApi\Exceptions\NotFoundException;
+use RdapApi\Exceptions\NotSupportedException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
@@ -48,6 +49,15 @@ it('creates NotFoundException extending RdapApiException', function () {
 
     expect($e)->toBeInstanceOf(RdapApiException::class)
         ->and($e->statusCode)->toBe(404);
+});
+
+it('creates NotSupportedException extending NotFoundException', function () {
+    $e = new NotSupportedException('TLD not supported', 404, 'not_supported');
+
+    expect($e)->toBeInstanceOf(NotFoundException::class)
+        ->and($e)->toBeInstanceOf(RdapApiException::class)
+        ->and($e->statusCode)->toBe(404)
+        ->and($e->errorCode)->toBe('not_supported');
 });
 
 it('creates RateLimitException with retryAfter', function () {

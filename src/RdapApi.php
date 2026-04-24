@@ -8,8 +8,10 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\RequestOptions;
+use Psr\Http\Message\ResponseInterface;
 use RdapApi\Exceptions\AuthenticationException;
 use RdapApi\Exceptions\NotFoundException;
+use RdapApi\Exceptions\NotSupportedException;
 use RdapApi\Exceptions\RateLimitException;
 use RdapApi\Exceptions\RdapApiException;
 use RdapApi\Exceptions\SubscriptionRequiredException;
@@ -22,6 +24,8 @@ use RdapApi\Responses\DomainResponse;
 use RdapApi\Responses\EntityResponse;
 use RdapApi\Responses\IpResponse;
 use RdapApi\Responses\NameserverResponse;
+use RdapApi\Responses\TldListResponse;
+use RdapApi\Responses\TldResponse;
 
 final class RdapApi
 {
@@ -132,6 +136,57 @@ final class RdapApi
     }
 
     /**
+     * List every TLD the API can resolve via RDAP.
+     *
+     * Does not count against the monthly quota. Returns `null` when
+     * `if_none_match` is provided and matches the server's current ETag
+     * (HTTP 304). Otherwise returns a {@see TldListResponse} whose `etag`
+     * property can be passed back on a later call to skip unchanged transfers.
+     *
+     * @param  array{since?: string, server?: string, if_none_match?: string}  $options
+     */
+    public function tlds(array $options = []): ?TldListResponse
+    {
+        $query = [];
+        if (isset($options['since'])) {
+            $query['since'] = $options['since'];
+        }
+        if (isset($options['server'])) {
+            $query['server'] = $options['server'];
+        }
+
+        $result = $this->conditionalGet('/tlds', $query, $options['if_none_match'] ?? null);
+        if ($result === null) {
+            return null;
+        }
+
+        [$payload, $etag] = $result;
+
+        return TldListResponse::fromArray($payload, $etag);
+    }
+
+    /**
+     * Return catalog metadata for a single TLD.
+     *
+     * Does not count against the monthly quota. Returns `null` on HTTP 304.
+     *
+     * @param  array{if_none_match?: string}  $options
+     *
+     * @throws NotFoundException when no RDAP server is registered for the TLD.
+     */
+    public function tld(string $tld, array $options = []): ?TldResponse
+    {
+        $result = $this->conditionalGet("/tlds/{$tld}", [], $options['if_none_match'] ?? null);
+        if ($result === null) {
+            return null;
+        }
+
+        [$payload, $etag] = $result;
+
+        return TldResponse::fromArray($payload, $etag);
+    }
+
+    /**
      * Look up multiple domains in a single request.
      *
      * Requires a Pro or Business plan. Up to 10 domains per call.
@@ -185,6 +240,41 @@ final class RdapApi
     }
 
     /**
+     * @param  array<string, string>  $query
+     * @return array{0: array<string, mixed>, 1: string|null}|null Returns `null` on HTTP 304, otherwise `[payload, etag]`.
+     *
+     * @throws RdapApiException
+     */
+    private function conditionalGet(string $path, array $query, ?string $ifNoneMatch): ?array
+    {
+        $options = [];
+        if ($query !== []) {
+            $options[RequestOptions::QUERY] = $query;
+        }
+        if ($ifNoneMatch !== null) {
+            $options[RequestOptions::HEADERS] = ['If-None-Match' => $ifNoneMatch];
+        }
+        $options[RequestOptions::HTTP_ERRORS] = false;
+
+        $response = $this->client->get($path, $options);
+        $statusCode = $response->getStatusCode();
+
+        if ($statusCode === 304) {
+            return null;
+        }
+
+        if ($statusCode >= 400) {
+            $this->raiseFromResponse($response);
+        }
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        $etag = $response->getHeaderLine('ETag');
+
+        return [$payload, $etag === '' ? null : $etag];
+    }
+
+    /**
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>
      *
@@ -209,7 +299,14 @@ final class RdapApi
      */
     private function handleErrorResponse(ClientException|ServerException $exception): never
     {
-        $response = $exception->getResponse();
+        $this->raiseFromResponse($exception->getResponse());
+    }
+
+    /**
+     * @throws RdapApiException
+     */
+    private function raiseFromResponse(ResponseInterface $response): never
+    {
         $statusCode = $response->getStatusCode();
 
         try {
@@ -231,6 +328,10 @@ final class RdapApi
         }
 
         $exceptionClass = self::ERROR_MAP[$statusCode] ?? RdapApiException::class;
+
+        if ($exceptionClass === NotFoundException::class && $error === 'not_supported') {
+            $exceptionClass = NotSupportedException::class;
+        }
 
         if ($exceptionClass === RateLimitException::class) {
             throw new RateLimitException($message, $statusCode, $error, $retryAfter);
