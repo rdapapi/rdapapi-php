@@ -29,7 +29,7 @@ use RdapApi\Responses\TldResponse;
 
 final class RdapApi
 {
-    private const DEFAULT_BASE_URL = 'https://rdapapi.io/api/v1';
+    private const DEFAULT_BASE_URL = 'https://rdapapi.io/api/v1/';
 
     private const DEFAULT_TIMEOUT = 30;
 
@@ -57,8 +57,13 @@ final class RdapApi
             throw new \InvalidArgumentException('API key must be a non-empty string.');
         }
 
+        $baseUrl = $options['base_url'] ?? self::DEFAULT_BASE_URL;
+        if (! str_ends_with($baseUrl, '/')) {
+            $baseUrl .= '/';
+        }
+
         $config = [
-            'base_uri' => $options['base_url'] ?? self::DEFAULT_BASE_URL,
+            'base_uri' => $baseUrl,
             RequestOptions::TIMEOUT => $options['timeout'] ?? self::DEFAULT_TIMEOUT,
             RequestOptions::HEADERS => [
                 'Authorization' => 'Bearer '.$apiKey,
@@ -86,7 +91,7 @@ final class RdapApi
             $query['follow'] = 'true';
         }
 
-        $data = $this->get("/domain/{$name}", $query);
+        $data = $this->get("domain/{$name}", $query);
 
         return DomainResponse::fromArray($data);
     }
@@ -96,7 +101,7 @@ final class RdapApi
      */
     public function ip(string $address): IpResponse
     {
-        $data = $this->get("/ip/{$address}");
+        $data = $this->get("ip/{$address}");
 
         return IpResponse::fromArray($data);
     }
@@ -110,7 +115,7 @@ final class RdapApi
     {
         $value = preg_replace('/^AS/i', '', (string) $number);
 
-        $data = $this->get("/asn/{$value}");
+        $data = $this->get("asn/{$value}");
 
         return AsnResponse::fromArray($data);
     }
@@ -120,7 +125,7 @@ final class RdapApi
      */
     public function nameserver(string $host): NameserverResponse
     {
-        $data = $this->get("/nameserver/{$host}");
+        $data = $this->get("nameserver/{$host}");
 
         return NameserverResponse::fromArray($data);
     }
@@ -130,7 +135,7 @@ final class RdapApi
      */
     public function entity(string $handle): EntityResponse
     {
-        $data = $this->get("/entity/{$handle}");
+        $data = $this->get("entity/{$handle}");
 
         return EntityResponse::fromArray($data);
     }
@@ -155,7 +160,7 @@ final class RdapApi
             $query['server'] = $options['server'];
         }
 
-        $result = $this->conditionalGet('/tlds', $query, $options['if_none_match'] ?? null);
+        $result = $this->conditionalGet('tlds', $query, $options['if_none_match'] ?? null);
         if ($result === null) {
             return null;
         }
@@ -176,7 +181,7 @@ final class RdapApi
      */
     public function tld(string $tld, array $options = []): ?TldResponse
     {
-        $result = $this->conditionalGet("/tlds/{$tld}", [], $options['if_none_match'] ?? null);
+        $result = $this->conditionalGet("tlds/{$tld}", [], $options['if_none_match'] ?? null);
         if ($result === null) {
             return null;
         }
@@ -202,7 +207,7 @@ final class RdapApi
             $body['follow'] = true;
         }
 
-        $data = $this->post('/domains/bulk', $body);
+        $data = $this->post('domains/bulk', $body);
 
         // Merge meta from result level into data for each successful result.
         foreach ($data['results'] ?? [] as $i => $result) {

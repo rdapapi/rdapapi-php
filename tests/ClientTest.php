@@ -85,6 +85,67 @@ it('sends accept json header', function () {
         ->toBe('application/json');
 });
 
+// === Base URL resolution (regression: RFC 3986 trailing-slash trap) ===
+
+it('preserves the api version segment in the request path', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::domainResponse())),
+    ], $history);
+
+    $client->domain('google.com');
+
+    expect((string) $history[0]['request']->getUri())
+        ->toBe('https://rdapapi.io/api/v1/domain/google.com');
+});
+
+it('normalizes a base_url without trailing slash', function () {
+    $history = [];
+    $mock = new MockHandler([
+        new Response(200, [], json_encode(Fixtures::domainResponse())),
+    ]);
+    $stack = HandlerStack::create($mock);
+    $stack->push(Middleware::history($history));
+
+    $client = new RdapApi('test-key', [
+        'base_url' => 'https://example.com/api/v1',
+        'handler' => $stack,
+    ]);
+
+    $client->domain('google.com');
+
+    expect((string) $history[0]['request']->getUri())
+        ->toBe('https://example.com/api/v1/domain/google.com');
+});
+
+it('builds correct request paths for every endpoint', function (string $method, array $args, string $expectedPath) {
+    $history = [];
+    $fixture = match ($method) {
+        'domain' => Fixtures::domainResponse(),
+        'ip' => Fixtures::ipResponse(),
+        'asn' => Fixtures::asnResponse(),
+        'nameserver' => Fixtures::nameserverResponse(),
+        'entity' => Fixtures::entityResponse(),
+        'tlds' => Fixtures::tldsResponse(),
+        'tld' => Fixtures::tldResponse(),
+    };
+    $client = mockClient([
+        new Response(200, [], json_encode($fixture)),
+    ], $history);
+
+    $client->{$method}(...$args);
+
+    expect($history[0]['request']->getUri()->getPath())->toBe($expectedPath);
+})->with([
+    ['domain', ['google.com'], '/api/v1/domain/google.com'],
+    ['ip', ['8.8.8.8'], '/api/v1/ip/8.8.8.8'],
+    ['asn', [15169], '/api/v1/asn/15169'],
+    ['nameserver', ['ns1.google.com'], '/api/v1/nameserver/ns1.google.com'],
+    ['entity', ['292-IANA'], '/api/v1/entity/292-IANA'],
+    ['tlds', [], '/api/v1/tlds'],
+    ['tld', ['com'], '/api/v1/tlds/com'],
+]);
+
 // === Domain ===
 
 it('returns DomainResponse for domain lookup', function () {
