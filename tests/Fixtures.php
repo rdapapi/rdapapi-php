@@ -20,7 +20,7 @@ final class Fixtures
                 'name' => 'MarkMonitor Inc.',
                 'iana_id' => '292',
                 'abuse_email' => 'abusecomplaints@markmonitor.com',
-                'abuse_phone' => '+1.2086851750',
+                'abuse_phone' => '+12086851750',
                 'url' => 'https://www.markmonitor.com',
             ],
             'dates' => [
@@ -162,7 +162,7 @@ final class Fixtures
             'name' => 'Google LLC',
             'organization' => 'Google LLC',
             'email' => 'arin-contact@google.com',
-            'phone' => '+1-650-253-0000',
+            'phone' => '+16502530000',
             'address' => '1600 Amphitheatre Parkway',
             'contact_url' => 'https://google.com',
             'country_code' => 'US',
