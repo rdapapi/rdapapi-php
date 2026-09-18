@@ -1,0 +1,47 @@
+name: Canary
+
+# Calls production through the SDK's public API, so a contract change upstream
+# turns this red. Never on push or pull_request: the repo is public, and a
+# canary that runs on a fork PR hands the API key to the fork.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Production canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        php-version: ["8.4"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up PHP ${{ matrix.php-version }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Probe production
+        env:
+          RDAPAPI_API_KEY: ${{ secrets.RDAPAPI_API_KEY }}
+        run: |
+          if [ -z "$RDAPAPI_API_KEY" ]; then
+            echo "::warning::RDAPAPI_API_KEY is not set; the production canary did not run."
+            exit 0
+          fi
+          php canary/canary.php
