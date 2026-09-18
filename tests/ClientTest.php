@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use RdapApi\Exceptions\AuthenticationException;
 use RdapApi\Exceptions\NotFoundException;
@@ -28,7 +30,7 @@ use RdapApi\Tests\Fixtures;
 use RdapApi\Version;
 
 /**
- * @param  list<Response>  $responses
+ * @param  list<Response|Throwable>  $responses
  * @param  array<int, array<string, mixed>>  $history
  */
 function mockClient(array $responses, array &$history = []): RdapApi
@@ -173,6 +175,42 @@ it('sends follow query param when requested', function () {
 
     expect($history[0]['request']->getUri()->getQuery())->toContain('follow=true')
         ->and($result->meta->followed)->toBeTrue();
+});
+
+it('sends whois=false when the fallback is refused', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::domainResponse())),
+    ], $history);
+
+    $client->domain('google.com', ['whois' => false]);
+
+    expect($history[0]['request']->getUri()->getQuery())->toContain('whois=false');
+});
+
+it('does not send whois query param by default', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::domainResponse())),
+    ], $history);
+
+    $client->domain('google.com', ['whois' => true]);
+
+    expect($history[0]['request']->getUri()->getQuery())->not->toContain('whois');
+});
+
+it('reports the protocol that answered a domain lookup', function () {
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::domainWhoisResponse())),
+    ]);
+
+    $result = $client->domain('google.com.tr');
+
+    expect($result->meta->source)->toBe('whois')
+        ->and($result->meta->server)->toBe('whois.trabis.gov.tr')
+        ->and($result->meta->rdap_server)->toBeNull()
+        ->and($result->meta->raw_rdap_url)->toBeNull()
+        ->and($result->dnssec)->toBeNull();
 });
 
 it('does not send follow query param by default', function () {
@@ -328,6 +366,30 @@ it('sends POST with follow for bulk domains', function () {
         ->and($body['follow'])->toBeTrue();
 });
 
+it('sends whois=false in the bulk body when the fallback is refused', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::bulkResponse())),
+    ], $history);
+
+    $client->bulkDomains(['google.com'], ['whois' => false]);
+
+    $body = json_decode((string) $history[0]['request']->getBody(), true);
+    expect($body['whois'])->toBeFalse();
+});
+
+it('does not send whois in bulk body by default', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(Fixtures::bulkResponse())),
+    ], $history);
+
+    $client->bulkDomains(['google.com'], ['whois' => true]);
+
+    $body = json_decode((string) $history[0]['request']->getBody(), true);
+    expect($body)->not->toHaveKey('whois');
+});
+
 it('does not send follow in bulk body by default', function () {
     $history = [];
     $client = mockClient([
@@ -361,6 +423,56 @@ it('throws ValidationException on 400', function () {
 
     $client->domain('bad!domain');
 })->throws(ValidationException::class, 'Invalid domain name');
+
+it('throws ValidationException with per-field errors on 422', function () {
+    $client = mockClient([
+        new Response(422, [], json_encode([
+            'error' => 'request_failed',
+            'message' => 'The domains field must not have more than 10 items.',
+            'errors' => ['domains' => ['The domains field must not have more than 10 items.']],
+        ])),
+    ]);
+
+    try {
+        $client->bulkDomains(['a.com']);
+        test()->fail('Expected ValidationException');
+    } catch (ValidationException $e) {
+        expect($e->statusCode)->toBe(422)
+            ->and($e->errorCode)->toBe('request_failed')
+            ->and($e->errors['domains'][0])->toBe('The domains field must not have more than 10 items.');
+    }
+});
+
+it('leaves the errors bag empty when the API sends a scalar errors field', function () {
+    $client = mockClient([
+        new Response(422, [], json_encode([
+            'error' => 'request_failed',
+            'message' => 'The domains field is required.',
+            'errors' => 'The domains field is required.',
+        ])),
+    ]);
+
+    try {
+        $client->bulkDomains(['a.com']);
+        test()->fail('Expected ValidationException');
+    } catch (ValidationException $e) {
+        expect($e->errors)->toBe([])
+            ->and($e->errorCode)->toBe('request_failed');
+    }
+});
+
+it('leaves the errors bag empty on a 400', function () {
+    $client = mockClient([
+        new Response(400, [], json_encode(['error' => 'invalid_domain', 'message' => 'The provided domain name is not valid.'])),
+    ]);
+
+    try {
+        $client->domain('bad!domain');
+        test()->fail('Expected ValidationException');
+    } catch (ValidationException $e) {
+        expect($e->errors)->toBe([]);
+    }
+});
 
 it('throws AuthenticationException on 401', function () {
     $client = mockClient([
@@ -490,6 +602,126 @@ it('throws TemporarilyUnavailableException with null retryAfter when header miss
     }
 });
 
+// === Retry-After (RFC 9110 allows both delta-seconds and an HTTP-date) ===
+
+it('reads an HTTP-date Retry-After as seconds from now', function () {
+    $client = mockClient([
+        new Response(503, ['Retry-After' => gmdate('D, d M Y H:i:s \G\M\T', time() + 120)], json_encode([
+            'error' => 'temporarily_unavailable',
+            'message' => 'One registry is throttling us.',
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected TemporarilyUnavailableException');
+    } catch (TemporarilyUnavailableException $e) {
+        expect($e->retryAfter)->toBeGreaterThan(110)
+            ->and($e->retryAfter)->toBeLessThanOrEqual(120);
+    }
+});
+
+it('clamps a Retry-After date that has already passed to zero', function () {
+    $client = mockClient([
+        new Response(429, ['Retry-After' => 'Wed, 21 Oct 2015 07:28:00 GMT'], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(0);
+    }
+});
+
+it('falls back to the body retry_after when no header is sent', function () {
+    $client = mockClient([
+        new Response(429, [], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+            'retry_after' => 42,
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(42);
+    }
+});
+
+it('prefers the Retry-After header over the body', function () {
+    $client = mockClient([
+        new Response(429, ['Retry-After' => '5'], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+            'retry_after' => 42,
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(5);
+    }
+});
+
+it('keeps a literal Retry-After of 0 instead of falling through to the body', function () {
+    $client = mockClient([
+        new Response(429, ['Retry-After' => '0'], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+            'retry_after' => 42,
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(0);
+    }
+});
+
+it('falls back to the body when the Retry-After header is unparseable', function () {
+    $client = mockClient([
+        new Response(429, ['Retry-After' => 'soon'], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+            'retry_after' => 42,
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBe(42);
+    }
+});
+
+it('ignores a non-integer body retry_after', function () {
+    $client = mockClient([
+        new Response(429, [], json_encode([
+            'error' => 'rate_limit_exceeded',
+            'message' => 'Rate limit exceeded',
+            'retry_after' => 'later',
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected RateLimitException');
+    } catch (RateLimitException $e) {
+        expect($e->retryAfter)->toBeNull();
+    }
+});
+
 it('throws UpstreamException on 502', function () {
     $client = mockClient([
         new Response(502, [], json_encode(['error' => 'upstream_error', 'message' => 'Upstream RDAP server failed'])),
@@ -497,6 +729,36 @@ it('throws UpstreamException on 502', function () {
 
     $client->domain('test.com');
 })->throws(UpstreamException::class);
+
+it('keeps the retryAfter a 502 sends', function () {
+    $client = mockClient([
+        new Response(502, ['Retry-After' => '30'], json_encode([
+            'error' => 'lookup_failed',
+            'message' => 'RDAP lookup failed. Please try again later.',
+            'retry_after' => 30,
+        ])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected UpstreamException');
+    } catch (UpstreamException $e) {
+        expect($e->retryAfter)->toBe(30);
+    }
+});
+
+it('leaves retryAfter null on a 502 that names no estimate', function () {
+    $client = mockClient([
+        new Response(502, [], json_encode(['error' => 'bad_gateway', 'message' => 'Bad gateway'])),
+    ]);
+
+    try {
+        $client->domain('test.com');
+        test()->fail('Expected UpstreamException');
+    } catch (UpstreamException $e) {
+        expect($e->retryAfter)->toBeNull();
+    }
+});
 
 it('throws RdapApiException for unknown status codes', function () {
     $client = mockClient([
@@ -545,12 +807,18 @@ it('lists TLDs with meta and etag', function () {
     $result = $client->tlds();
 
     expect($result)->toBeInstanceOf(TldListResponse::class)
-        ->and($result->meta->count)->toBe(2)
+        ->and($result->meta->count)->toBe(3)
         ->and($result->meta->coverage)->toBe(0.5)
         ->and($result->meta->thresholds->always)->toBe(0.99)
         ->and($result->data[0]->tld)->toBe('com')
+        ->and($result->data[0]->protocol)->toBe('rdap')
+        ->and($result->data[0]->server)->toBe('rdap.verisign.com')
         ->and($result->data[0]->field_availability?->registered_at)->toBe('always')
         ->and($result->data[1]->field_availability)->toBeNull()
+        ->and($result->data[2]->protocol)->toBe('whois')
+        ->and($result->data[2]->server)->toBe('whois.nic.it')
+        ->and($result->data[2]->rdap_server_host)->toBeNull()
+        ->and($result->data[2]->rdap_server_url)->toBeNull()
         ->and($result->etag)->toBe('"abc"');
 });
 
@@ -633,6 +901,54 @@ it('throws NotFoundException when tld() target does not exist', function () {
 
     $client->tld('nope');
 })->throws(NotFoundException::class);
+
+// === Ping ===
+
+it('returns true when the API answers ping', function () {
+    $history = [];
+    $client = mockClient([
+        new Response(200, [], json_encode(['status' => 'ok'])),
+    ], $history);
+
+    expect($client->ping())->toBeTrue()
+        ->and($history[0]['request']->getUri()->getPath())->toBe('/api/v1/ping');
+});
+
+it('returns false when ping answers anything but ok', function () {
+    $client = mockClient([
+        new Response(200, [], json_encode(['status' => 'degraded'])),
+    ]);
+
+    expect($client->ping())->toBeFalse();
+});
+
+it('returns false when the host is unreachable', function () {
+    $client = mockClient([
+        new ConnectException('Could not resolve host', new Request('GET', 'ping')),
+    ]);
+
+    expect($client->ping())->toBeFalse();
+});
+
+it('returns false when ping answers an error status', function (int $status, string $error) {
+    $client = mockClient([
+        new Response($status, [], json_encode(['error' => $error, 'message' => 'Down'])),
+    ]);
+
+    expect($client->ping())->toBeFalse();
+})->with([
+    [401, 'unauthenticated'],
+    [502, 'bad_gateway'],
+    [503, 'service_unavailable'],
+]);
+
+it('returns false when ping answers something that is not JSON', function () {
+    $client = mockClient([
+        new Response(200, [], '<html>maintenance</html>'),
+    ]);
+
+    expect($client->ping())->toBeFalse();
+});
 
 // === Version ===
 

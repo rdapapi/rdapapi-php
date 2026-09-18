@@ -14,6 +14,7 @@ use RdapApi\Responses\IpAddresses;
 use RdapApi\Responses\IpResponse;
 use RdapApi\Responses\Meta;
 use RdapApi\Responses\NameserverResponse;
+use RdapApi\Responses\Redaction;
 use RdapApi\Responses\Registrar;
 use RdapApi\Responses\Remark;
 use RdapApi\Responses\TldEntry;
@@ -41,8 +42,29 @@ it('parses DomainResponse from array', function () {
         ->and($resp->entities->registrant)->toBeInstanceOf(Contact::class)
         ->and($resp->entities->registrant->name)->toBe('Google LLC')
         ->and($resp->entities->registrant->country_code)->toBe('US')
+        ->and($resp->redacted)->toBeNull()
+        ->and($resp->meta->server)->toBe('rdap.markmonitor.com')
+        ->and($resp->meta->source)->toBe('rdap')
         ->and($resp->meta->rdap_server)->toBe('https://rdap.markmonitor.com/rdap/')
         ->and($resp->meta->cached)->toBeTrue();
+});
+
+it('parses the redaction claims a registry declares', function () {
+    $resp = DomainResponse::fromArray(Fixtures::domainRedactedResponse());
+
+    expect($resp->redacted)->toBeInstanceOf(Redaction::class)
+        ->and($resp->redacted->handle)->toBe('replacementValue')
+        ->and($resp->redacted->registrar['iana_id'])->toBe('replacementValue')
+        ->and($resp->redacted->entities['registrant']['name'])->toBe('emptyValue')
+        ->and($resp->redacted->entities['registrant']['email'])->toBe('removal');
+});
+
+it('passes through a redaction method it does not recognise', function () {
+    $redaction = Redaction::fromArray(['entities' => ['registrant' => ['name' => 'someFutureMethod']]]);
+
+    expect($redaction->entities['registrant']['name'])->toBe('someFutureMethod')
+        ->and($redaction->handle)->toBeNull()
+        ->and($redaction->registrar)->toBe([]);
 });
 
 it('handles nullable fields in DomainResponse', function () {
@@ -52,15 +74,18 @@ it('handles nullable fields in DomainResponse', function () {
         'registrar' => [],
         'dates' => ['registered' => null, 'expires' => null],
         'nameservers' => [],
-        'dnssec' => false,
         'entities' => [],
-        'meta' => ['rdap_server' => '', 'raw_rdap_url' => '', 'cached' => false, 'cache_expires' => ''],
+        'meta' => ['server' => 'rdap.verisign.com', 'source' => 'rdap'],
     ]);
 
     expect($resp->unicode_name)->toBeNull()
         ->and($resp->handle)->toBeNull()
         ->and($resp->dates->registered)->toBeNull()
+        ->and($resp->dnssec)->toBeNull()
         ->and($resp->entities->registrant)->toBeNull()
+        ->and($resp->redacted)->toBeNull()
+        ->and($resp->meta->rdap_server)->toBeNull()
+        ->and($resp->meta->raw_rdap_url)->toBeNull()
         ->and($resp->meta->followed)->toBeNull();
 });
 
@@ -76,6 +101,7 @@ it('parses IpResponse from array', function () {
         ->and($resp->parent_handle)->toBe('NET-8-0-0-0-1')
         ->and($resp->country)->toBe('US')
         ->and($resp->cidr)->toBe(['8.8.8.0/24'])
+        ->and($resp->geofeed)->toBe('https://geofeed.ipxo.com/geofeed.txt')
         ->and($resp->remarks)->toHaveCount(1)
         ->and($resp->remarks[0])->toBeInstanceOf(Remark::class)
         ->and($resp->remarks[0]->title)->toBe('Note')
@@ -83,6 +109,13 @@ it('parses IpResponse from array', function () {
         ->and($resp->port43)->toBe('whois.arin.net')
         ->and($resp->entities->abuse)->toBeInstanceOf(Contact::class)
         ->and($resp->entities->abuse->email)->toBe('network-abuse@google.com');
+});
+
+it('leaves geofeed null when the network publishes none', function () {
+    $data = Fixtures::ipResponse();
+    $data['geofeed'] = null;
+
+    expect(IpResponse::fromArray($data)->geofeed)->toBeNull();
 });
 
 it('parses AsnResponse from array', function () {
@@ -93,6 +126,7 @@ it('parses AsnResponse from array', function () {
         ->and($resp->type)->toBe('DIRECT ALLOCATION')
         ->and($resp->start_autnum)->toBe(15169)
         ->and($resp->end_autnum)->toBe(15169)
+        ->and($resp->country)->toBe('US')
         ->and($resp->port43)->toBe('whois.arin.net');
 });
 
@@ -147,6 +181,8 @@ it('parses BulkDomainResponse from array', function () {
 
 it('parses Meta with follow fields', function () {
     $meta = Meta::fromArray([
+        'server' => 'rdap.example.com',
+        'source' => 'rdap',
         'rdap_server' => 'https://rdap.example.com',
         'raw_rdap_url' => 'https://rdap.example.com/domain/test.com',
         'cached' => false,
@@ -157,8 +193,17 @@ it('parses Meta with follow fields', function () {
     ]);
 
     expect($meta->followed)->toBeTrue()
+        ->and($meta->server)->toBe('rdap.example.com')
+        ->and($meta->source)->toBe('rdap')
         ->and($meta->registrar_rdap_server)->toBe('https://rdap.registrar.com')
         ->and($meta->follow_error)->toBeNull();
+});
+
+it('falls back to rdap as the source on an older cached record', function () {
+    $meta = Meta::fromArray(['cached' => true]);
+
+    expect($meta->source)->toBe('rdap')
+        ->and($meta->server)->toBeNull();
 });
 
 it('parses Entities with all roles', function () {
@@ -226,17 +271,22 @@ it('handles empty arrays gracefully', function () {
 it('parses TldListResponse with entries and meta', function () {
     $resp = TldListResponse::fromArray(Fixtures::tldsResponse(), '"abc"');
 
-    expect($resp->meta->count)->toBe(2)
+    expect($resp->meta->count)->toBe(3)
         ->and($resp->meta->coverage)->toBe(0.5)
         ->and($resp->meta->thresholds->always)->toBe(0.99)
         ->and($resp->meta->thresholds->usually)->toBe(0.8)
         ->and($resp->meta->thresholds->sometimes)->toBe(0.0)
         ->and($resp->data[0])->toBeInstanceOf(TldEntry::class)
         ->and($resp->data[0]->tld)->toBe('com')
+        ->and($resp->data[0]->protocol)->toBe('rdap')
+        ->and($resp->data[0]->server)->toBe('rdap.verisign.com')
         ->and($resp->data[0]->rdap_server_host)->toBe('rdap.verisign.com')
         ->and($resp->data[0]->field_availability)->toBeInstanceOf(FieldAvailability::class)
         ->and($resp->data[0]->field_availability->registrar)->toBe('sometimes')
         ->and($resp->data[1]->field_availability)->toBeNull()
+        ->and($resp->data[2]->protocol)->toBe('whois')
+        ->and($resp->data[2]->server)->toBe('whois.nic.it')
+        ->and($resp->data[2]->rdap_server_url)->toBeNull()
         ->and($resp->etag)->toBe('"abc"');
 });
 
@@ -259,6 +309,9 @@ it('handles missing tlds payload fields gracefully', function () {
 
     $single = TldResponse::fromArray([]);
     expect($single->data->tld)->toBe('')
+        ->and($single->data->protocol)->toBe('')
+        ->and($single->data->server)->toBe('')
+        ->and($single->data->rdap_server_host)->toBeNull()
         ->and($single->data->field_availability)->toBeNull()
         ->and($single->meta->computed_at)->toBe('')
         ->and($single->etag)->toBeNull();

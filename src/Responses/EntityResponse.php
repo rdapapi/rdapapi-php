@@ -32,6 +32,7 @@ final readonly class EntityResponse
         public Entities $entities,
         public array $autnums,
         public array $networks,
+        public ?Redaction $redacted,
         public Meta $meta,
     ) {}
 
@@ -58,6 +59,7 @@ final readonly class EntityResponse
             entities: Entities::fromArray($data['entities'] ?? []),
             autnums: array_values(array_map(fn (array $a): EntityAutnum => EntityAutnum::fromArray($a), $data['autnums'] ?? [])),
             networks: array_values(array_map(fn (array $n): EntityNetwork => EntityNetwork::fromArray($n), $data['networks'] ?? [])),
+            redacted: isset($data['redacted']) ? Redaction::fromArray($data['redacted']) : null,
             meta: Meta::fromArray($data['meta'] ?? []),
         );
     }

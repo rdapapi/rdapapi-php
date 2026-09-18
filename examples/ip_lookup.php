@@ -16,12 +16,14 @@ echo "Range: {$ip->start_address} - {$ip->end_address}\n";
 echo "Country: {$ip->country}\n";
 echo 'CIDR: '.implode(', ', $ip->cidr)."\n";
 echo 'Status: '.implode(', ', $ip->status)."\n";
+echo 'Geofeed: '.($ip->geofeed ?? 'none published')."\n";
 
 // ASN lookup.
 $asn = $api->asn(15169);
 
 echo "\nASN: {$asn->handle}\n";
 echo "Name: {$asn->name}\n";
+echo 'Country: '.($asn->country ?? 'unknown')."\n";
 
 // Nameserver lookup.
 $ns = $api->nameserver('ns1.google.com');

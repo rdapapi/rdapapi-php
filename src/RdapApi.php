@@ -6,6 +6,7 @@ namespace RdapApi;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\RequestOptions;
 use Psr\Http\Message\ResponseInterface;
@@ -39,6 +40,7 @@ final class RdapApi
         401 => AuthenticationException::class,
         403 => SubscriptionRequiredException::class,
         404 => NotFoundException::class,
+        422 => ValidationException::class,
         429 => RateLimitException::class,
         502 => UpstreamException::class,
         503 => TemporarilyUnavailableException::class,
@@ -80,15 +82,22 @@ final class RdapApi
     }
 
     /**
-     * Look up RDAP registration data for a domain name.
+     * Look up registration data for a domain name.
      *
-     * @param  array{follow?: bool}  $options
+     * Answered over RDAP, or over WHOIS for the TLDs that have no RDAP server.
+     * Pass `whois: false` to refuse that fallback, so those TLDs raise
+     * {@see NotSupportedException} instead.
+     *
+     * @param  array{follow?: bool, whois?: bool}  $options
      */
     public function domain(string $name, array $options = []): DomainResponse
     {
         $query = [];
         if (! empty($options['follow'])) {
             $query['follow'] = 'true';
+        }
+        if (isset($options['whois']) && ! $options['whois']) {
+            $query['whois'] = 'false';
         }
 
         $data = $this->get("domain/{$name}", $query);
@@ -98,6 +107,9 @@ final class RdapApi
 
     /**
      * Look up RDAP registration data for an IP address.
+     *
+     * Accepts a plain address ("8.8.8.8"), which returns the most specific
+     * allocation covering it, or a CIDR block ("8.8.8.0/24").
      */
     public function ip(string $address): IpResponse
     {
@@ -141,7 +153,7 @@ final class RdapApi
     }
 
     /**
-     * List every TLD the API can resolve via RDAP.
+     * List every TLD the API can resolve, over either protocol.
      *
      * Does not count against the monthly quota. Returns `null` when
      * `if_none_match` is provided and matches the server's current ETag
@@ -177,7 +189,7 @@ final class RdapApi
      *
      * @param  array{if_none_match?: string}  $options
      *
-     * @throws NotFoundException when no RDAP server is registered for the TLD.
+     * @throws NotFoundException when the catalog covers the TLD over neither protocol.
      */
     public function tld(string $tld, array $options = []): ?TldResponse
     {
@@ -196,8 +208,10 @@ final class RdapApi
      *
      * Requires a Pro or Business plan. Up to 10 domains per call.
      *
+     * `follow` and `whois` apply to every domain in the request.
+     *
      * @param  list<string>  $domains
-     * @param  array{follow?: bool}  $options
+     * @param  array{follow?: bool, whois?: bool}  $options
      */
     public function bulkDomains(array $domains, array $options = []): BulkDomainResponse
     {
@@ -205,6 +219,9 @@ final class RdapApi
         $body = ['domains' => $domains];
         if (! empty($options['follow'])) {
             $body['follow'] = true;
+        }
+        if (isset($options['whois']) && ! $options['whois']) {
+            $body['whois'] = false;
         }
 
         $data = $this->post('domains/bulk', $body);
@@ -222,10 +239,29 @@ final class RdapApi
     }
 
     /**
+     * Check that the API is reachable.
+     *
+     * Costs no quota and makes no upstream call. Never throws: an unreachable
+     * host or an error response is the answer a liveness probe asks for, so it
+     * comes back as `false`.
+     */
+    public function ping(): bool
+    {
+        try {
+            $data = $this->get('ping');
+        } catch (RdapApiException|GuzzleException|\JsonException) {
+            return false;
+        }
+
+        return ($data['status'] ?? null) === 'ok';
+    }
+
+    /**
      * @param  array<string, string>  $query
      * @return array<string, mixed>
      *
      * @throws RdapApiException
+     * @throws \JsonException when the API answers with something that is not JSON.
      */
     private function get(string $path, array $query = []): array
     {
@@ -249,6 +285,7 @@ final class RdapApi
      * @return array{0: array<string, mixed>, 1: string|null}|null Returns `null` on HTTP 304, otherwise `[payload, etag]`.
      *
      * @throws RdapApiException
+     * @throws \JsonException when the API answers with something that is not JSON.
      */
     private function conditionalGet(string $path, array $query, ?string $ifNoneMatch): ?array
     {
@@ -284,6 +321,7 @@ final class RdapApi
      * @return array<string, mixed>
      *
      * @throws RdapApiException
+     * @throws \JsonException when the API answers with something that is not JSON.
      */
     private function post(string $path, array $body): array
     {
@@ -315,7 +353,7 @@ final class RdapApi
         $statusCode = $response->getStatusCode();
 
         try {
-            /** @var array{error?: string, message?: string} $body */
+            /** @var array{error?: string, message?: string, errors?: mixed, retry_after?: mixed} $body */
             $body = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             $body = [];
@@ -324,18 +362,22 @@ final class RdapApi
         $error = $body['error'] ?? 'unknown_error';
         $message = $body['message'] ?? "HTTP {$statusCode}";
 
-        $retryAfter = null;
-        if ($statusCode === 429 || $statusCode === 503) {
-            $retryHeader = $response->getHeaderLine('Retry-After');
-            if ($retryHeader !== '') {
-                $retryAfter = (int) $retryHeader;
-            }
-        }
+        $retryAfter = $this->retryAfterFrom($response, $body);
 
         $exceptionClass = self::ERROR_MAP[$statusCode] ?? RdapApiException::class;
 
         if ($exceptionClass === NotFoundException::class && $error === 'not_supported') {
             $exceptionClass = NotSupportedException::class;
+        }
+
+        if ($exceptionClass === ValidationException::class) {
+            $errors = [];
+            if (isset($body['errors']) && is_array($body['errors'])) {
+                /** @var array<string, list<string>> $errors */
+                $errors = $body['errors'];
+            }
+
+            throw new ValidationException($message, $statusCode, $error, errors: $errors);
         }
 
         if ($exceptionClass === RateLimitException::class) {
@@ -346,6 +388,41 @@ final class RdapApi
             throw new TemporarilyUnavailableException($message, $statusCode, $error, $retryAfter);
         }
 
+        if ($exceptionClass === UpstreamException::class) {
+            throw new UpstreamException($message, $statusCode, $error, $retryAfter);
+        }
+
         throw new $exceptionClass($message, $statusCode, $error);
+    }
+
+    /**
+     * Seconds to wait before retrying, on any status that carries an estimate.
+     *
+     * A throttling registry's own `Retry-After` is propagated verbatim, so it
+     * arrives in either form RFC 9110 allows. The header must be read first:
+     * the body's `retry_after` is an integer cast of that same value, which
+     * collapses to 0 for the HTTP-date form. `0` is itself a valid header —
+     * "retry now" — so absence, not falsiness, is what sends us to the body.
+     *
+     * @param  array{retry_after?: mixed}  $body
+     */
+    private function retryAfterFrom(ResponseInterface $response, array $body): ?int
+    {
+        $header = $response->getHeaderLine('Retry-After');
+
+        if (ctype_digit($header)) {
+            return (int) $header;
+        }
+
+        if ($header !== '') {
+            $date = strtotime($header);
+            if ($date !== false) {
+                return max(0, $date - time());
+            }
+        }
+
+        return isset($body['retry_after']) && is_int($body['retry_after'])
+            ? $body['retry_after']
+            : null;
     }
 }

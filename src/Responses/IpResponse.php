@@ -9,6 +9,7 @@ final readonly class IpResponse
     /**
      * @param  list<string>  $status
      * @param  list<string>  $cidr
+     * @param  string|null  $geofeed  RFC 8805 geofeed URL as the network publishes it, never fetched and never inherited from a parent.
      * @param  list<Remark>  $remarks
      */
     public function __construct(
@@ -24,8 +25,10 @@ final readonly class IpResponse
         public Dates $dates,
         public Entities $entities,
         public array $cidr,
+        public ?string $geofeed,
         public array $remarks,
         public ?string $port43,
+        public ?Redaction $redacted,
         public Meta $meta,
     ) {}
 
@@ -47,11 +50,13 @@ final readonly class IpResponse
             dates: Dates::fromArray($data['dates'] ?? []),
             entities: Entities::fromArray($data['entities'] ?? []),
             cidr: $data['cidr'] ?? [],
+            geofeed: $data['geofeed'] ?? null,
             remarks: array_values(array_map(
                 fn (array $r): Remark => Remark::fromArray($r),
                 $data['remarks'] ?? [],
             )),
             port43: $data['port43'] ?? null,
+            redacted: isset($data['redacted']) ? Redaction::fromArray($data['redacted']) : null,
             meta: Meta::fromArray($data['meta'] ?? []),
         );
     }

@@ -30,6 +30,26 @@ it('creates ValidationException extending RdapApiException', function () {
         ->and($e->errorCode)->toBe('invalid_input');
 });
 
+it('creates ValidationException with per-field errors', function () {
+    $e = new ValidationException('Invalid input', 422, 'request_failed', errors: ['domains' => ['Too many items.']]);
+
+    expect($e->errors)->toBe(['domains' => ['Too many items.']]);
+});
+
+it('keeps previous in the position every other exception uses', function () {
+    $previous = new RuntimeException('original');
+    $e = new ValidationException('Invalid input', 400, 'invalid_domain', $previous);
+
+    expect($e->getPrevious())->toBe($previous)
+        ->and($e->errors)->toBe([]);
+});
+
+it('creates ValidationException with an empty errors bag', function () {
+    $e = new ValidationException('Invalid input', 400, 'invalid_domain');
+
+    expect($e->errors)->toBe([]);
+});
+
 it('creates AuthenticationException extending RdapApiException', function () {
     $e = new AuthenticationException('Bad key', 401, 'unauthenticated');
 
@@ -92,7 +112,14 @@ it('creates UpstreamException extending RdapApiException', function () {
     $e = new UpstreamException('Upstream fail', 502, 'upstream_error');
 
     expect($e)->toBeInstanceOf(RdapApiException::class)
-        ->and($e->statusCode)->toBe(502);
+        ->and($e->statusCode)->toBe(502)
+        ->and($e->retryAfter)->toBeNull();
+});
+
+it('creates UpstreamException with retryAfter', function () {
+    $e = new UpstreamException('Upstream fail', 502, 'lookup_failed', 30);
+
+    expect($e->retryAfter)->toBe(30);
 });
 
 it('preserves previous exception', function () {

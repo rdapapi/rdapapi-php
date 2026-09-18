@@ -16,9 +16,9 @@ if ($tlds !== null) {
     foreach (array_slice($tlds->data, 0, 5) as $tld) {
         $availability = $tld->field_availability;
         if ($availability === null) {
-            echo ".{$tld->tld} via {$tld->rdap_server_host} (not enough data yet)\n";
+            echo ".{$tld->tld} via {$tld->server} ({$tld->protocol}, no field stats)\n";
         } else {
-            echo ".{$tld->tld} via {$tld->rdap_server_host}: registrar={$availability->registrar}, expires_at={$availability->expires_at}\n";
+            echo ".{$tld->tld} via {$tld->server}: registrar={$availability->registrar}, expires_at={$availability->expires_at}\n";
         }
     }
 

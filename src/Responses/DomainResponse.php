@@ -9,6 +9,7 @@ final readonly class DomainResponse
     /**
      * @param  list<string>  $status
      * @param  list<string>  $nameservers
+     * @param  bool|null  $dnssec  Null where the registry publishes no DNSSEC status.
      */
     public function __construct(
         public string $domain,
@@ -18,8 +19,9 @@ final readonly class DomainResponse
         public Registrar $registrar,
         public Dates $dates,
         public array $nameservers,
-        public bool $dnssec,
+        public ?bool $dnssec,
         public Entities $entities,
+        public ?Redaction $redacted,
         public Meta $meta,
     ) {}
 
@@ -36,8 +38,9 @@ final readonly class DomainResponse
             registrar: Registrar::fromArray($data['registrar'] ?? []),
             dates: Dates::fromArray($data['dates'] ?? []),
             nameservers: $data['nameservers'] ?? [],
-            dnssec: $data['dnssec'] ?? false,
+            dnssec: $data['dnssec'] ?? null,
             entities: Entities::fromArray($data['entities'] ?? []),
+            redacted: isset($data['redacted']) ? Redaction::fromArray($data['redacted']) : null,
             meta: Meta::fromArray($data['meta'] ?? []),
         );
     }

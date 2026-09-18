@@ -17,6 +17,7 @@ final readonly class NameserverResponse
         public array $status,
         public Dates $dates,
         public Entities $entities,
+        public ?Redaction $redacted,
         public Meta $meta,
     ) {}
 
@@ -33,6 +34,7 @@ final readonly class NameserverResponse
             status: $data['status'] ?? [],
             dates: Dates::fromArray($data['dates'] ?? []),
             entities: Entities::fromArray($data['entities'] ?? []),
+            redacted: isset($data['redacted']) ? Redaction::fromArray($data['redacted']) : null,
             meta: Meta::fromArray($data['meta'] ?? []),
         );
     }
