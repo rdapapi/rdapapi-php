@@ -730,9 +730,9 @@ it('throws UpstreamException on 502', function () {
     $client->domain('test.com');
 })->throws(UpstreamException::class);
 
-it('keeps the retryAfter a 502 sends', function () {
+it('throws UpstreamException on a 503 lookup_failed, keeping its retryAfter', function () {
     $client = mockClient([
-        new Response(502, ['Retry-After' => '30'], json_encode([
+        new Response(503, ['Retry-After' => '30'], json_encode([
             'error' => 'lookup_failed',
             'message' => 'RDAP lookup failed. Please try again later.',
             'retry_after' => 30,

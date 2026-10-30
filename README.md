@@ -275,7 +275,7 @@ try {
 | `NotSupportedException` | 404 | `not_supported` — nothing we can query covers this TLD, IP range or handle |
 | `ValidationException` | 422 | `request_failed` — the body failed validation |
 | `RateLimitException` | 429 | `rate_limit_exceeded`, `quota_exceeded`, `too_many_requests` |
-| `UpstreamException` | 502 | `lookup_failed`, `bad_gateway` — carries `retryAfter` when the registry named one |
+| `UpstreamException` | 503, 502 | `lookup_failed` (503), `bad_gateway` (502) — carries `retryAfter` when the registry named one |
 | `TemporarilyUnavailableException` | 503 | `temporarily_unavailable`, `service_unavailable` |
 | `RdapApiException` | any other | `method_not_allowed` (405), `payload_too_large` (413), `gateway_timeout` (504), `server_error` |
 

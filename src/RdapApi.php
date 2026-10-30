@@ -370,6 +370,11 @@ final class RdapApi
             $exceptionClass = NotSupportedException::class;
         }
 
+        // The API sends lookup_failed as 503, as its CDN replaces 502 bodies.
+        if ($exceptionClass === TemporarilyUnavailableException::class && $error === 'lookup_failed') {
+            $exceptionClass = UpstreamException::class;
+        }
+
         if ($exceptionClass === ValidationException::class) {
             $errors = [];
             if (isset($body['errors']) && is_array($body['errors'])) {
