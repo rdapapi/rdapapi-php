@@ -12,6 +12,8 @@ final readonly class BulkDomainResult
         public ?DomainResponse $data = null,
         public ?string $error = null,
         public ?string $message = null,
+        public ?string $reason = null,
+        public ?string $registrable_domain = null,
     ) {}
 
     /**
@@ -25,6 +27,8 @@ final readonly class BulkDomainResult
             data: isset($data['data']) ? DomainResponse::fromArray($data['data']) : null,
             error: $data['error'] ?? null,
             message: $data['message'] ?? null,
+            reason: $data['reason'] ?? null,
+            registrable_domain: $data['registrable_domain'] ?? null,
         );
     }
 }

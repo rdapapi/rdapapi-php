@@ -353,7 +353,7 @@ final class RdapApi
         $statusCode = $response->getStatusCode();
 
         try {
-            /** @var array{error?: string, message?: string, errors?: mixed, retry_after?: mixed} $body */
+            /** @var array{error?: string, message?: string, errors?: mixed, retry_after?: mixed, reason?: mixed, registrable_domain?: mixed} $body */
             $body = json_decode((string) $response->getBody(), true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             $body = [];
@@ -383,6 +383,16 @@ final class RdapApi
             }
 
             throw new ValidationException($message, $statusCode, $error, errors: $errors);
+        }
+
+        if ($exceptionClass === NotFoundException::class || $exceptionClass === NotSupportedException::class) {
+            throw new $exceptionClass(
+                $message,
+                $statusCode,
+                $error,
+                reason: is_string($body['reason'] ?? null) ? $body['reason'] : null,
+                registrableDomain: is_string($body['registrable_domain'] ?? null) ? $body['registrable_domain'] : null,
+            );
         }
 
         if ($exceptionClass === RateLimitException::class) {

@@ -271,7 +271,7 @@ try {
 | `ValidationException` | 400 | `invalid_domain`, `invalid_ip`, `invalid_asn`, `invalid_nameserver`, `invalid_handle`, `invalid_prefix`, `invalid_since`, `bad_request` |
 | `AuthenticationException` | 401 | `unauthenticated` |
 | `SubscriptionRequiredException` | 403 | `subscription_required`, `plan_upgrade_required` (bulk needs Pro or Business), `forbidden` (a temporary IP block, not a billing state) |
-| `NotFoundException` | 404 | `not_found` — the namespace is covered but no record exists |
+| `NotFoundException` | 404 | `not_found` — the namespace is covered but no record exists; `domain_reserved`, `not_registrable` |
 | `NotSupportedException` | 404 | `not_supported` — nothing we can query covers this TLD, IP range or handle |
 | `ValidationException` | 422 | `request_failed` — the body failed validation |
 | `RateLimitException` | 429 | `rate_limit_exceeded`, `quota_exceeded`, `too_many_requests` |
@@ -282,6 +282,8 @@ try {
 Branch on `errorCode`, never on the message: messages are display text and may be reworded at any time. Any code above can answer any endpoint.
 
 All exceptions expose `statusCode`, `errorCode`, and `getMessage()`. `RateLimitException`, `TemporarilyUnavailableException` and `UpstreamException` also have `retryAfter`: seconds to wait, read from the `Retry-After` header in either form the HTTP spec allows — a count of seconds, or a date, which is what a throttling registry's own header often carries — and falling back to the body's `retry_after`. It is null when the API gave no estimate.
+
+`NotFoundException` has `reason`, the registry's wording on a `domain_reserved`, and `registrableDomain`, the name to look up instead on a `not_registrable`; both are null otherwise. Failed bulk results carry them as `reason` and `registrable_domain`.
 
 `ValidationException` has `errors`, the per-field messages a `422` sends (empty on a `400`):
 

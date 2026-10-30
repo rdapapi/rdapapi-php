@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use RdapApi\Responses\AsnResponse;
 use RdapApi\Responses\BulkDomainResponse;
+use RdapApi\Responses\BulkDomainResult;
 use RdapApi\Responses\Contact;
 use RdapApi\Responses\Dates;
 use RdapApi\Responses\DomainResponse;
@@ -177,6 +178,28 @@ it('parses BulkDomainResponse from array', function () {
         ->and($resp->results[1]->status)->toBe('error')
         ->and($resp->results[1]->error)->toBe('invalid_domain')
         ->and($resp->results[1]->data)->toBeNull();
+});
+
+it('parses reason and registrable_domain on failed bulk results', function () {
+    $reserved = BulkDomainResult::fromArray([
+        'domain' => 'si.si',
+        'status' => 'error',
+        'error' => 'domain_reserved',
+        'message' => 'This domain is reserved by the registry.',
+        'reason' => 'si.si is forbidden (Rezervirano za RS)',
+    ]);
+    $subdomain = BulkDomainResult::fromArray([
+        'domain' => 'www.example.com',
+        'status' => 'error',
+        'error' => 'not_registrable',
+        'message' => 'www.example.com is not a registrable domain.',
+        'registrable_domain' => 'example.com',
+    ]);
+
+    expect($reserved->reason)->toBe('si.si is forbidden (Rezervirano za RS)')
+        ->and($reserved->registrable_domain)->toBeNull()
+        ->and($subdomain->registrable_domain)->toBe('example.com')
+        ->and($subdomain->reason)->toBeNull();
 });
 
 it('parses Meta with follow fields', function () {

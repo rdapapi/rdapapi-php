@@ -523,6 +523,44 @@ it('throws NotSupportedException when 404 error code is not_supported', function
     }
 });
 
+it('exposes reason on a domain_reserved 404', function () {
+    $client = mockClient([
+        new Response(404, [], json_encode([
+            'error' => 'domain_reserved',
+            'message' => 'This domain is reserved by the registry.',
+            'reason' => 'si.si is forbidden (Rezervirano za RS)',
+        ])),
+    ]);
+
+    try {
+        $client->domain('si.si');
+        test()->fail('Expected NotFoundException');
+    } catch (NotFoundException $e) {
+        expect($e->errorCode)->toBe('domain_reserved')
+            ->and($e->reason)->toBe('si.si is forbidden (Rezervirano za RS)')
+            ->and($e->registrableDomain)->toBeNull();
+    }
+});
+
+it('exposes registrableDomain on a not_registrable 404', function () {
+    $client = mockClient([
+        new Response(404, [], json_encode([
+            'error' => 'not_registrable',
+            'message' => 'www.example.com is not a registrable domain.',
+            'registrable_domain' => 'example.com',
+        ])),
+    ]);
+
+    try {
+        $client->domain('www.example.com');
+        test()->fail('Expected NotFoundException');
+    } catch (NotFoundException $e) {
+        expect($e->errorCode)->toBe('not_registrable')
+            ->and($e->registrableDomain)->toBe('example.com')
+            ->and($e->reason)->toBeNull();
+    }
+});
+
 it('routes not_supported errors for IP lookups too', function () {
     $client = mockClient([
         new Response(404, [], json_encode([
