@@ -6,5 +6,5 @@ namespace RdapApi;
 
 final class Version
 {
-    public const SDK = '0.6.0';
+    public const SDK = '0.7.0';
 }
